@@ -1,5 +1,6 @@
 package app.a;
 
+import app.NoSuchUserException;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Promise;
@@ -7,6 +8,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -59,38 +61,43 @@ public class VerticleA extends AbstractVerticle {
                 }
         );
 
-        CompositeFuture
-                .all(promiseResultB.future(), promiseResultC.future())
-                .onComplete(result -> {
-                    if (result.succeeded()) {
-                        JsonObject jsonB = promiseResultB.future().result();
-                        JsonObject jsonC = promiseResultC.future().result();
+        CompositeFuture compositeFuture = CompositeFuture.all(promiseResultB.future(), promiseResultC.future());
+        compositeFuture.onComplete(result -> {
+            if (result.succeeded()) {
+                JsonObject jsonB = promiseResultB.future().result();
+                JsonObject jsonC = promiseResultC.future().result();
 
-                        JsonObject jsonD = new JsonObject();
-                        jsonD.put("id", id);
-                        jsonD.mergeIn(jsonB);
-                        jsonD.mergeIn(jsonC);
+                JsonObject jsonD = new JsonObject();
+                jsonD.put("id", id);
+                jsonD.mergeIn(jsonB);
+                jsonD.mergeIn(jsonC);
 
-                        EventBus eventBus = vertx.eventBus();
+                EventBus eventBus = vertx.eventBus();
 
-                        eventBus.request("/user", jsonD,
-                                asyncResult -> {
-                                    if (asyncResult.succeeded()) {
-                                        JsonObject reply = (JsonObject) asyncResult.result().body();
-                                        HttpServerResponse response = context.response();
-                                        response.setStatusCode(200);
-                                        response.end(reply.encode());
-                                    } else {
-                                        HttpServerResponse response = context.response();
-                                        response.setStatusCode(520);
-                                        response.end(asyncResult.cause().getMessage());
-                                    }
-                                });
+                eventBus.request("/user", jsonD,
+                        asyncResult -> {
+                            if (asyncResult.succeeded()) {
+                                JsonObject reply = (JsonObject) asyncResult.result().body();
+                                HttpServerResponse response = context.response();
+                                response.setStatusCode(200);
+                                response.end(reply.encode());
+                                logger.info("OK");
+                            } else {
+                                HttpServerResponse response = context.response();
+                                response.setStatusCode(500);
+                                response.end(asyncResult.cause().getMessage());
+                                logger.error(asyncResult.cause().getMessage());
+                            }
+                        });
 
-                    } else {
-                        logger.error(result.cause().getMessage());
-                    }
-                });
+            } else {
+                logger.error(result.cause().getMessage());
+                HttpServerResponse response = context.response();
+                response.setStatusCode(500);
+
+                response.end();
+            }
+        });
     }
 
     private void sendRequest(String id, Promise<JsonObject> promiseResult, Promise<Object> future, String appHost, int appPort) {
@@ -100,9 +107,14 @@ public class VerticleA extends AbstractVerticle {
         request.send(
                 asyncResult -> {
                     if (asyncResult.succeeded()) {
-                        JsonObject jsonResult = asyncResult.result().body().toJsonObject();
-                        promiseResult.complete(jsonResult);
-                        future.complete();
+                        try {
+                            JsonObject jsonResult = asyncResult.result().body().toJsonObject();
+                            promiseResult.complete(jsonResult);
+                            future.complete();
+                        } catch (Exception e) {
+                            promiseResult.fail(e);
+                            future.complete();
+                        }
                     } else {
                         promiseResult.fail(asyncResult.cause());
                         future.fail(asyncResult.cause());

@@ -20,16 +20,17 @@ public class VerticleD extends AbstractVerticle {
         consumer.handler(handler -> {
             JsonObject object = handler.body();
             logger.info("Received message : " + object.toString());
-            int id = object.getInteger("id");
+            int id = Integer.parseInt(object.getString("id"));
             object.mergeIn(UserStorage.getAge(id));
             handler.reply(object);
+            logger.info("Reply : " + object.toString());
         });
 
         consumer.completionHandler(res -> {
             if (res.succeeded()) {
                 logger.info("Verticle D is running");
             } else {
-                logger.info(res.cause().getMessage());
+                logger.error(res.cause().getMessage());
             }
         });
     }

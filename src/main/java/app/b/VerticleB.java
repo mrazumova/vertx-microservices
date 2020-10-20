@@ -1,5 +1,6 @@
 package app.b;
 
+import app.NoSuchUserException;
 import app.UserStorage;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
@@ -38,13 +39,14 @@ public class VerticleB extends AbstractVerticle {
     private void handle(RoutingContext context) {
         logger.info("Incoming request...");
         int id = Integer.parseInt(context.request().getParam("id"));
-
-        JsonObject object = UserStorage.getUsernameById(id);
         HttpServerResponse response = context.response();
-        response.setStatusCode(200);
-        response.setChunked(true);
-        response.write(object.encode());
-        response.end();
-        logger.info("Parameter: " + id + " Response: " + object.toString());
+        try {
+            JsonObject object = UserStorage.getUsernameById(id);
+            response.end(object.encode());
+            logger.info("Parameter: " + id + " Response: " + object.toString());
+        } catch (NoSuchUserException e) {
+            logger.info(e.getMessage());
+            response.end(e.getMessage());
+        }
     }
 }

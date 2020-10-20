@@ -18,10 +18,9 @@ public class Starter {
     }
 
     private static void startInClusterMode(String verticleName) {
-        Vertx vertx = Vertx.vertx();
-
         ClusterManager clusterManager = new HazelcastClusterManager();
         Vertx.clusteredVertx(new VertxOptions().setClusterManager(clusterManager), handler -> {
+            Vertx vertx = handler.result();
             ConfigRetriever retriever = ConfigRetriever.create(vertx);
             retriever.getConfig(
                     json -> {

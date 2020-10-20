@@ -22,29 +22,32 @@ public class UserStorage {
     }
 
     public static JsonObject getUsernameById(int id) {
-        JsonObject object = new JsonObject();
+        if (!userMap.containsKey(id))
+            throw new NoSuchUserException(id);
 
+        JsonObject object = new JsonObject();
         String username = userMap.get(id).getUsername();
         object.put("username", username);
-
         return object;
     }
 
     public static JsonObject getCountryById(int id) {
-        JsonObject object = new JsonObject();
+        if (!userMap.containsKey(id))
+            throw new NoSuchUserException(id);
 
+        JsonObject object = new JsonObject();
         String country = userMap.get(id).getCountry();
         object.put("country", country);
-
         return object;
     }
 
     public static JsonObject getAge(int id){
-        JsonObject object = new JsonObject();
+        if (!userMap.containsKey(id))
+            throw new NoSuchUserException(id);
 
+        JsonObject object = new JsonObject();
         int age = userMap.get(id).getAge();
         object.put("age", age);
-
         return object;
     }
 }
