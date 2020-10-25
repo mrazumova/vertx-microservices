@@ -1,7 +1,6 @@
 package app.b;
 
 import app.NoSuchUserException;
-import app.UserStorage;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpServer;
@@ -11,7 +10,6 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.servicediscovery.Record;
 import io.vertx.servicediscovery.ServiceDiscovery;
-import io.vertx.servicediscovery.ServiceReference;
 import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,9 +56,16 @@ public class VerticleB extends AbstractVerticle {
         int id = Integer.parseInt(context.request().getParam("id"));
         HttpServerResponse response = context.response();
         try {
-            JsonObject object = UserStorage.getUsernameById(id);
-            response.end(object.encode());
-            logger.info("Parameter: " + id + " Response: " + object.toString());
+            JsonObject object = new JsonObject().put("id", id);
+            vertx.eventBus().request("/getUsername", object, asyncResult -> {
+                if (asyncResult.succeeded()) {
+                    JsonObject reply = (JsonObject) asyncResult.result().body();
+                    response.setChunked(true);
+                    response.write(reply.encode());
+                    logger.info("Parameter: " + id + " Response: " + reply.toString());
+                }
+            });
+            response.end();
         } catch (NoSuchUserException e) {
             logger.info(e.getMessage());
             response.end(e.getMessage());

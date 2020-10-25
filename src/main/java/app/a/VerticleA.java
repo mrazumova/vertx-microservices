@@ -83,8 +83,8 @@ public class VerticleA extends AbstractVerticle {
 
                 JsonObject jsonD = new JsonObject();
                 jsonD.put("id", id);
-                jsonD.mergeIn(jsonB);
-                jsonD.mergeIn(jsonC);
+                //jsonD.mergeIn(jsonB);
+                //jsonD.mergeIn(jsonC);
 
                 EventBus eventBus = vertx.eventBus();
 

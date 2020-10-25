@@ -1,6 +1,5 @@
 package app.d;
 
-import app.UserStorage;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.eventbus.EventBus;
@@ -13,8 +12,6 @@ public class VerticleD extends AbstractVerticle {
 
     private static final Logger logger = LoggerFactory.getLogger(VerticleD.class);
 
-    /*private ServiceDiscovery serviceDiscovery;*/
-
     public void start(Promise<Void> startPromise) throws Exception {
         EventBus eventBus = vertx.eventBus();
 
@@ -22,10 +19,15 @@ public class VerticleD extends AbstractVerticle {
         consumer.handler(handler -> {
             JsonObject object = handler.body();
             logger.info("Received message : " + object.toString());
-            int id = Integer.parseInt(object.getString("id"));
-            object.mergeIn(UserStorage.getAge(id));
-            handler.reply(object);
-            logger.info("Reply : " + object.toString());
+            vertx.eventBus().request("/getAge", object, asyncResult -> {
+                if (asyncResult.succeeded()) {
+                    JsonObject reply = (JsonObject) asyncResult.result().body();
+                    handler.reply(reply);
+                    logger.info("Reply : " + reply.toString());
+                } else {
+                    logger.error(asyncResult.cause().getMessage());
+                }
+            });
         });
 
         consumer.completionHandler(res -> {
@@ -35,16 +37,5 @@ public class VerticleD extends AbstractVerticle {
                 logger.error(res.cause().getMessage());
             }
         });
-
-        /*serviceDiscovery = ServiceDiscovery.create(vertx);
-        Record record = EventBusService.createRecord("d", "/user", DService.class);
-        serviceDiscovery.publish(record, asyncResult -> {
-            if (asyncResult.succeeded()) {
-                logger.info("Verticle D : registration succeeded, " + asyncResult.result().toJson());
-            } else {
-                logger.error("Verticle D : registration failed - " + asyncResult.cause().getMessage());
-            }
-        });*/
-
     }
 }

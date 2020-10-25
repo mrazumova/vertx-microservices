@@ -1,7 +1,6 @@
 package app.c;
 
 import app.NoSuchUserException;
-import app.UserStorage;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpServer;
@@ -55,9 +54,16 @@ public class VerticleC extends AbstractVerticle {
         int id = Integer.parseInt(context.request().getParam("id"));
         HttpServerResponse response = context.response();
         try {
-            JsonObject object = UserStorage.getCountryById(id);
-            response.end(object.encode());
-            logger.info("Parameter: " + id + " Response: " + object.toString());
+            JsonObject object = new JsonObject().put("id", id);
+            vertx.eventBus().request("/getCountry", object, asyncResult -> {
+                if (asyncResult.succeeded()) {
+                    JsonObject reply = (JsonObject) asyncResult.result().body();
+                    response.setChunked(true);
+                    response.write(reply.encode());
+                    logger.info("Parameter: " + id + " Response: " + reply.toString());
+                }
+            });
+            response.end();
         } catch (NoSuchUserException e) {
             logger.info(e.getMessage());
             response.end(e.getMessage());

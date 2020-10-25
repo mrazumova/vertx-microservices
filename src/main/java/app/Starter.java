@@ -15,6 +15,7 @@ public class Starter {
         startInClusterMode("app.b.VerticleB");
         startInClusterMode("app.c.VerticleC");
         startInClusterMode("app.d.VerticleD");
+        startInClusterMode("app.db.DatabaseVerticle");
     }
 
     private static void startInClusterMode(String verticleName) {
