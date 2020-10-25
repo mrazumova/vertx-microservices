@@ -12,8 +12,8 @@ public class Starter {
 
     public static void main(String[] args) {
         startInClusterMode("app.a.VerticleA");
-        start("app.b.VerticleB");
-        start("app.c.VerticleC");
+        startInClusterMode("app.b.VerticleB");
+        startInClusterMode("app.c.VerticleC");
         startInClusterMode("app.d.VerticleD");
     }
 

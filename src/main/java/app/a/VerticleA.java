@@ -1,25 +1,30 @@
 package app.a;
 
-import app.NoSuchUserException;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
+import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.client.HttpRequest;
 import io.vertx.ext.web.client.WebClient;
+import io.vertx.servicediscovery.Record;
+import io.vertx.servicediscovery.ServiceDiscovery;
+import io.vertx.servicediscovery.ServiceReference;
+import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class VerticleA extends AbstractVerticle {
 
-    Logger logger = LoggerFactory.getLogger(VerticleA.class);
+    private static final Logger logger = LoggerFactory.getLogger(VerticleA.class);
+
+    private ServiceDiscovery serviceDiscovery;
 
     public void start(Promise<Void> startPromise) throws Exception {
         Router router = Router.router(vertx);
@@ -35,10 +40,19 @@ public class VerticleA extends AbstractVerticle {
         int port = config().getInteger("a.port");
         String host = config().getString("a.host");
         HttpServer httpServer = vertx.createHttpServer();
-        httpServer.requestHandler(router)
-                .listen(port, host);
+        httpServer.requestHandler(router).listen(port, host);
 
         logger.info("Listening on " + host + " " + port);
+
+        serviceDiscovery = ServiceDiscovery.create(vertx);
+        Record record = HttpEndpoint.createRecord("a", host, port, "/");
+        serviceDiscovery.publish(record, asyncResult -> {
+            if (asyncResult.succeeded()) {
+                logger.info("Verticle A : registration succeeded, " + asyncResult.result().toJson());
+            } else {
+                logger.error("Verticle A : registration failed - " + asyncResult.cause().getMessage());
+            }
+        });
     }
 
     private void handle(RoutingContext context) {
@@ -48,14 +62,14 @@ public class VerticleA extends AbstractVerticle {
         Promise<JsonObject> promiseResultC = Promise.promise();
 
         vertx.executeBlocking(
-                future -> sendRequest(id, promiseResultB, future, config().getString("b.host"), config().getInteger("b.port")),
+                findServiceAndSendRequest(id, promiseResultB, new JsonObject().put("name", "b")),
                 false,
                 asyncResult -> {
                 }
         );
 
         vertx.executeBlocking(
-                future -> sendRequest(id, promiseResultC, future, config().getString("c.host"), config().getInteger("c.port")),
+                findServiceAndSendRequest(id, promiseResultC, new JsonObject().put("name", "c")),
                 false,
                 asyncResult -> {
                 }
@@ -100,9 +114,22 @@ public class VerticleA extends AbstractVerticle {
         });
     }
 
-    private void sendRequest(String id, Promise<JsonObject> promiseResult, Promise<Object> future, String appHost, int appPort) {
-        WebClient webClient = WebClient.create(vertx);
-        HttpRequest<Buffer> request = webClient.get(appPort, appHost, "/user");
+    private Handler<Promise<Object>> findServiceAndSendRequest(String id, Promise<JsonObject> promiseResult, JsonObject filter) {
+        return future -> serviceDiscovery.getRecord(
+                filter,
+                asyncResult -> {
+                    if (asyncResult.succeeded() && asyncResult.result() != null) {
+                        ServiceReference serviceReference = serviceDiscovery.getReference(asyncResult.result());
+                        WebClient webClient = serviceReference.getAs(WebClient.class);
+                        sendRequest(id, promiseResult, future, webClient);
+                        serviceReference.release();
+                    }
+                }
+        );
+    }
+
+    private void sendRequest(String id, Promise<JsonObject> promiseResult, Promise<Object> future, WebClient webClient) {
+        HttpRequest<Buffer> request = webClient.get("/user");
         request.addQueryParam("id", id);
         request.send(
                 asyncResult -> {

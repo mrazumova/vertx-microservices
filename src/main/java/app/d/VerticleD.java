@@ -11,7 +11,9 @@ import org.slf4j.LoggerFactory;
 
 public class VerticleD extends AbstractVerticle {
 
-    Logger logger = LoggerFactory.getLogger(VerticleD.class);
+    private static final Logger logger = LoggerFactory.getLogger(VerticleD.class);
+
+    /*private ServiceDiscovery serviceDiscovery;*/
 
     public void start(Promise<Void> startPromise) throws Exception {
         EventBus eventBus = vertx.eventBus();
@@ -33,5 +35,16 @@ public class VerticleD extends AbstractVerticle {
                 logger.error(res.cause().getMessage());
             }
         });
+
+        /*serviceDiscovery = ServiceDiscovery.create(vertx);
+        Record record = EventBusService.createRecord("d", "/user", DService.class);
+        serviceDiscovery.publish(record, asyncResult -> {
+            if (asyncResult.succeeded()) {
+                logger.info("Verticle D : registration succeeded, " + asyncResult.result().toJson());
+            } else {
+                logger.error("Verticle D : registration failed - " + asyncResult.cause().getMessage());
+            }
+        });*/
+
     }
 }
