@@ -30,14 +30,8 @@ public class VerticleA extends AbstractVerticle {
     @Override
     public void start(Future<Void> startFuture) throws Exception {
         Router router = Router.router(vertx);
-
         router.get("/user").handler(this::handle);
-
-        router.get().handler(
-                context -> context
-                        .put("id", "value")
-                        .reroute("/user")
-        );
+        router.get().handler(context -> context.put("id", "value").reroute("/user"));
 
         int port = config().getInteger("a.port");
         String host = config().getString("a.host");
@@ -45,7 +39,8 @@ public class VerticleA extends AbstractVerticle {
         runServiceDiscovery(port, host);
 
         HttpServer httpServer = vertx.createHttpServer();
-        httpServer.requestHandler(router).rxListen(port, host);
+        httpServer.requestHandler(router);
+        httpServer.rxListen(port, host).subscribe();
 
         logger.info("Listening on " + host + " " + port);
     }
@@ -85,32 +80,7 @@ public class VerticleA extends AbstractVerticle {
         CompositeFuture compositeFuture = CompositeFuture.all(promiseResultB.future(), promiseResultC.future());
         compositeFuture.onComplete(result -> {
             if (result.succeeded()) {
-                JsonObject jsonB = promiseResultB.future().result();
-                JsonObject jsonC = promiseResultC.future().result();
-
-                JsonObject jsonD = new JsonObject();
-                jsonD.put("id", id);
-                jsonD.mergeIn(jsonB);
-                jsonD.mergeIn(jsonC);
-
-                EventBus eventBus = vertx.eventBus();
-
-                eventBus.request("/user", jsonD,
-                        asyncResult -> {
-                            if (asyncResult.succeeded()) {
-                                JsonObject reply = (JsonObject) asyncResult.result().body();
-                                HttpServerResponse response = context.response();
-                                response.setStatusCode(200);
-                                response.end(reply.encode());
-                                logger.info("OK");
-                            } else {
-                                HttpServerResponse response = context.response();
-                                response.setStatusCode(500);
-                                response.end(asyncResult.cause().getMessage());
-                                logger.error(asyncResult.cause().getMessage());
-                            }
-                        });
-
+                callD(context, id, promiseResultB, promiseResultC);
             } else {
                 logger.error(result.cause().getMessage());
                 HttpServerResponse response = context.response();
@@ -119,6 +89,34 @@ public class VerticleA extends AbstractVerticle {
                 response.end();
             }
         });
+    }
+
+    private void callD(RoutingContext context, String id, Promise<JsonObject> promiseResultB, Promise<JsonObject> promiseResultC) {
+        JsonObject jsonB = promiseResultB.future().result();
+        JsonObject jsonC = promiseResultC.future().result();
+
+        JsonObject jsonD = new JsonObject();
+        jsonD.put("id", id);
+        jsonD.mergeIn(jsonB);
+        jsonD.mergeIn(jsonC);
+
+        EventBus eventBus = vertx.eventBus();
+
+        eventBus.request("/user", jsonD,
+                asyncResult -> {
+                    if (asyncResult.succeeded()) {
+                        JsonObject reply = (JsonObject) asyncResult.result().body();
+                        HttpServerResponse response = context.response();
+                        response.setStatusCode(200);
+                        response.end(reply.encode());
+                        logger.info("OK");
+                    } else {
+                        HttpServerResponse response = context.response();
+                        response.setStatusCode(500);
+                        response.end(asyncResult.cause().getMessage());
+                        logger.error(asyncResult.cause().getMessage());
+                    }
+                });
     }
 
     private Handler<Promise<Object>> findServiceAndSendRequest(String id, Promise<JsonObject> promiseResult, JsonObject filter) {

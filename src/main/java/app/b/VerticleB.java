@@ -24,22 +24,22 @@ public class VerticleB extends AbstractVerticle {
     @Override
     public void start(Future<Void> startFuture) throws Exception {
         Router router = Router.router(vertx);
-
         router.get("/user").handler(this::handle);
-
-        router.get().handler(
-                context -> context
-                        .put("id", "value")
-                        .reroute("/user")
-        );
+        router.get().handler(context -> context.put("id", "value").reroute("/user"));
 
         int port = config().getInteger("b.port");
         String host = config().getString("b.host");
 
+        runServiceDiscovery(port, host);
+
         HttpServer httpServer = vertx.createHttpServer();
+        httpServer.requestHandler(router);
+        httpServer.rxListen(port, host).subscribe();
 
         logger.info("Listening on " + host + " " + port);
+    }
 
+    private void runServiceDiscovery(int port, String host) {
         serviceDiscovery = ServiceDiscovery.create(vertx);
         Record record = HttpEndpoint.createRecord("b", host, port, "/");
         serviceDiscovery.publish(record, asyncResult -> {
@@ -49,10 +49,7 @@ public class VerticleB extends AbstractVerticle {
                 logger.error("Verticle B : registration failed - " + asyncResult.cause().getMessage());
             }
         });
-        httpServer.requestHandler(router)
-                .rxListen(port, host);
     }
-
 
     private void handle(RoutingContext context) {
         logger.info("Incoming request...");
