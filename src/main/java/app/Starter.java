@@ -1,11 +1,10 @@
 package app;
 
-import io.vertx.config.ConfigRetriever;
 import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
+import io.vertx.reactivex.config.ConfigRetriever;
+import io.vertx.reactivex.core.Vertx;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
 
 public class Starter {
@@ -19,32 +18,22 @@ public class Starter {
 
     private static void startInClusterMode(String verticleName) {
         ClusterManager clusterManager = new HazelcastClusterManager();
-        Vertx.clusteredVertx(new VertxOptions().setClusterManager(clusterManager), handler -> {
-            Vertx vertx = handler.result();
-            ConfigRetriever retriever = ConfigRetriever.create(vertx);
-            retriever.getConfig(
-                    json -> {
-                        JsonObject config = json.result();
-                        DeploymentOptions deploymentOptions = new DeploymentOptions();
+        VertxOptions vertxOptions = new VertxOptions().setClusterManager(clusterManager);
 
-                        deploymentOptions.setConfig(config);
-                        vertx.deployVerticle(verticleName, deploymentOptions);
-                    }
-            );
-        });
-    }
+        Vertx.rxClusteredVertx(vertxOptions).subscribe(
+                vertx -> {
+                    ConfigRetriever configRetriever = ConfigRetriever.create(vertx);
+                    configRetriever.rxGetConfig().subscribe(
+                            jsonObject -> {
+                                DeploymentOptions deploymentOptions = new DeploymentOptions();
+                                deploymentOptions.setConfig(jsonObject);
 
-    private static void start(String verticleName) {
-        Vertx vertx = Vertx.vertx();
-
-        ConfigRetriever retriever = ConfigRetriever.create(vertx);
-        retriever.getConfig(
-                json -> {
-                    JsonObject config = json.result();
-                    DeploymentOptions deploymentOptions = new DeploymentOptions();
-
-                    deploymentOptions.setConfig(config);
-                    vertx.deployVerticle(verticleName, deploymentOptions);
+                                vertx.rxDeployVerticle(verticleName, deploymentOptions).subscribe(
+                                        id -> System.out.println(verticleName + " deployment id : " + id),
+                                        err -> System.out.println("ERROR : " + verticleName + " - " + err.getMessage())
+                                );
+                            }
+                    );
                 }
         );
     }

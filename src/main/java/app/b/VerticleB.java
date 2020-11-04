@@ -2,16 +2,15 @@ package app.b;
 
 import app.NoSuchUserException;
 import app.UserStorage;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.Promise;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
+import io.vertx.reactivex.core.AbstractVerticle;
+import io.vertx.reactivex.core.http.HttpServer;
+import io.vertx.reactivex.core.http.HttpServerResponse;
+import io.vertx.reactivex.ext.web.Router;
+import io.vertx.reactivex.ext.web.RoutingContext;
+import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
 import io.vertx.servicediscovery.Record;
-import io.vertx.servicediscovery.ServiceDiscovery;
-import io.vertx.servicediscovery.ServiceReference;
 import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +21,8 @@ public class VerticleB extends AbstractVerticle {
 
     private ServiceDiscovery serviceDiscovery;
 
-    public void start(Promise<Void> startPromise) throws Exception {
+    @Override
+    public void start(Future<Void> startFuture) throws Exception {
         Router router = Router.router(vertx);
 
         router.get("/user").handler(this::handle);
@@ -37,8 +37,6 @@ public class VerticleB extends AbstractVerticle {
         String host = config().getString("b.host");
 
         HttpServer httpServer = vertx.createHttpServer();
-        httpServer.requestHandler(router)
-                .listen(port, host);
 
         logger.info("Listening on " + host + " " + port);
 
@@ -51,7 +49,10 @@ public class VerticleB extends AbstractVerticle {
                 logger.error("Verticle B : registration failed - " + asyncResult.cause().getMessage());
             }
         });
+        httpServer.requestHandler(router)
+                .rxListen(port, host);
     }
+
 
     private void handle(RoutingContext context) {
         logger.info("Incoming request...");

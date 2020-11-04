@@ -1,21 +1,22 @@
 package app.a;
 
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.eventbus.EventBus;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.client.HttpRequest;
 import io.vertx.ext.web.client.WebClient;
+import io.vertx.reactivex.core.AbstractVerticle;
+import io.vertx.reactivex.core.CompositeFuture;
+import io.vertx.reactivex.core.Promise;
+import io.vertx.reactivex.core.eventbus.EventBus;
+import io.vertx.reactivex.core.http.HttpServer;
+import io.vertx.reactivex.core.http.HttpServerResponse;
+import io.vertx.reactivex.ext.web.Router;
+import io.vertx.reactivex.ext.web.RoutingContext;
+import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
+import io.vertx.reactivex.servicediscovery.ServiceReference;
 import io.vertx.servicediscovery.Record;
-import io.vertx.servicediscovery.ServiceDiscovery;
-import io.vertx.servicediscovery.ServiceReference;
 import io.vertx.servicediscovery.types.HttpEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,8 @@ public class VerticleA extends AbstractVerticle {
 
     private ServiceDiscovery serviceDiscovery;
 
-    public void start(Promise<Void> startPromise) throws Exception {
+    @Override
+    public void start(Future<Void> startFuture) throws Exception {
         Router router = Router.router(vertx);
 
         router.get("/user").handler(this::handle);
@@ -39,11 +41,16 @@ public class VerticleA extends AbstractVerticle {
 
         int port = config().getInteger("a.port");
         String host = config().getString("a.host");
+
+        runServiceDiscovery(port, host);
+
         HttpServer httpServer = vertx.createHttpServer();
-        httpServer.requestHandler(router).listen(port, host);
+        httpServer.requestHandler(router).rxListen(port, host);
 
         logger.info("Listening on " + host + " " + port);
+    }
 
+    private void runServiceDiscovery(int port, String host) {
         serviceDiscovery = ServiceDiscovery.create(vertx);
         Record record = HttpEndpoint.createRecord("a", host, port, "/");
         serviceDiscovery.publish(record, asyncResult -> {
