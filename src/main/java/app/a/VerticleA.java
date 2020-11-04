@@ -1,19 +1,18 @@
 package app.a;
 
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.buffer.Buffer;
+import io.reactivex.Completable;
+import io.reactivex.Single;
+import io.reactivex.schedulers.Schedulers;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.client.HttpRequest;
-import io.vertx.ext.web.client.WebClient;
 import io.vertx.reactivex.core.AbstractVerticle;
-import io.vertx.reactivex.core.CompositeFuture;
-import io.vertx.reactivex.core.Promise;
 import io.vertx.reactivex.core.eventbus.EventBus;
 import io.vertx.reactivex.core.http.HttpServer;
 import io.vertx.reactivex.core.http.HttpServerResponse;
 import io.vertx.reactivex.ext.web.Router;
 import io.vertx.reactivex.ext.web.RoutingContext;
+import io.vertx.reactivex.ext.web.client.HttpResponse;
+import io.vertx.reactivex.ext.web.client.WebClient;
+import io.vertx.reactivex.ext.web.codec.BodyCodec;
 import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
 import io.vertx.reactivex.servicediscovery.ServiceReference;
 import io.vertx.servicediscovery.Record;
@@ -28,7 +27,7 @@ public class VerticleA extends AbstractVerticle {
     private ServiceDiscovery serviceDiscovery;
 
     @Override
-    public void start(Future<Void> startFuture) throws Exception {
+    public Completable rxStart() {
         Router router = Router.router(vertx);
         router.get("/user").handler(this::handle);
         router.get().handler(context -> context.put("id", "value").reroute("/user"));
@@ -40,117 +39,81 @@ public class VerticleA extends AbstractVerticle {
 
         HttpServer httpServer = vertx.createHttpServer();
         httpServer.requestHandler(router);
-        httpServer.rxListen(port, host).subscribe();
 
         logger.info("Listening on " + host + " " + port);
+
+        return httpServer.rxListen(port, host).ignoreElement();
     }
 
     private void runServiceDiscovery(int port, String host) {
         serviceDiscovery = ServiceDiscovery.create(vertx);
         Record record = HttpEndpoint.createRecord("a", host, port, "/");
-        serviceDiscovery.publish(record, asyncResult -> {
-            if (asyncResult.succeeded()) {
-                logger.info("Verticle A : registration succeeded, " + asyncResult.result().toJson());
-            } else {
-                logger.error("Verticle A : registration failed - " + asyncResult.cause().getMessage());
-            }
-        });
+        serviceDiscovery.rxPublish(record).subscribe(
+                json -> logger.info("Verticle A : registration succeeded, " + json),
+                error -> logger.error("Verticle A : registration failed - " + error.getMessage()));
     }
+
 
     private void handle(RoutingContext context) {
         String id = context.request().getParam("id");
 
-        Promise<JsonObject> promiseResultB = Promise.promise();
-        Promise<JsonObject> promiseResultC = Promise.promise();
+        Single<Record> serviceB = getServiceReference(new JsonObject().put("name", "b")).subscribeOn(Schedulers.computation());
+        Single<Record> serviceC = getServiceReference(new JsonObject().put("name", "c")).subscribeOn(Schedulers.computation());
 
-        vertx.executeBlocking(
-                findServiceAndSendRequest(id, promiseResultB, new JsonObject().put("name", "b")),
-                false,
-                asyncResult -> {
-                }
-        );
+        Single<JsonObject> resultFromB = sendRequestToService(id, serviceB.blockingGet()).subscribeOn(Schedulers.computation());
+        Single<JsonObject> resultFromC = sendRequestToService(id, serviceC.blockingGet()).subscribeOn(Schedulers.computation());
 
-        vertx.executeBlocking(
-                findServiceAndSendRequest(id, promiseResultC, new JsonObject().put("name", "c")),
-                false,
-                asyncResult -> {
-                }
-        );
-
-        CompositeFuture compositeFuture = CompositeFuture.all(promiseResultB.future(), promiseResultC.future());
-        compositeFuture.onComplete(result -> {
-            if (result.succeeded()) {
-                callD(context, id, promiseResultB, promiseResultC);
-            } else {
-                logger.error(result.cause().getMessage());
-                HttpServerResponse response = context.response();
-                response.setStatusCode(500);
-
-                response.end();
-            }
-        });
+        Single
+                .zip(resultFromB, resultFromC, JsonObject::mergeIn)
+                .subscribe(
+                        json -> {
+                            if (json.isEmpty()) {
+                                HttpServerResponse response = context.response();
+                                response.setStatusCode(200);
+                                JsonObject object = new JsonObject().put("error", "no user with id " + id);
+                                response.end(object.encode());
+                            } else {
+                                Single<JsonObject> message = getMessageThroughEventBus(id, json).subscribeOn(Schedulers.computation());
+                                message.subscribe(
+                                        jsonMessage -> {
+                                            HttpServerResponse response = context.response();
+                                            response.setStatusCode(200);
+                                            response.end(jsonMessage.encode());
+                                            logger.info("OK");
+                                        },
+                                        error -> errorResponse(context, error)
+                                );
+                            }
+                        },
+                        error -> errorResponse(context, error)
+                );
     }
 
-    private void callD(RoutingContext context, String id, Promise<JsonObject> promiseResultB, Promise<JsonObject> promiseResultC) {
-        JsonObject jsonB = promiseResultB.future().result();
-        JsonObject jsonC = promiseResultC.future().result();
+    private Single<Record> getServiceReference(JsonObject filter) {
+        return serviceDiscovery.rxGetRecord(filter).toSingle();
+    }
 
-        JsonObject jsonD = new JsonObject();
+    private Single<JsonObject> sendRequestToService(String id, Record record) {
+        ServiceReference serviceReference = serviceDiscovery.getReference(record);
+        WebClient webClient = serviceReference.getAs(WebClient.class);
+        return webClient.get("/user")
+                .addQueryParam("id", id)
+                .as(BodyCodec.jsonObject())
+                .rxSend()
+                .map(HttpResponse::body);
+    }
+
+    private Single<JsonObject> getMessageThroughEventBus(String id, JsonObject jsonD) {
         jsonD.put("id", id);
-        jsonD.mergeIn(jsonB);
-        jsonD.mergeIn(jsonC);
-
         EventBus eventBus = vertx.eventBus();
-
-        eventBus.request("/user", jsonD,
-                asyncResult -> {
-                    if (asyncResult.succeeded()) {
-                        JsonObject reply = (JsonObject) asyncResult.result().body();
-                        HttpServerResponse response = context.response();
-                        response.setStatusCode(200);
-                        response.end(reply.encode());
-                        logger.info("OK");
-                    } else {
-                        HttpServerResponse response = context.response();
-                        response.setStatusCode(500);
-                        response.end(asyncResult.cause().getMessage());
-                        logger.error(asyncResult.cause().getMessage());
-                    }
-                });
+        return eventBus.rxRequest("/user", jsonD).map(objectMessage -> (JsonObject) objectMessage.body());
     }
 
-    private Handler<Promise<Object>> findServiceAndSendRequest(String id, Promise<JsonObject> promiseResult, JsonObject filter) {
-        return future -> serviceDiscovery.getRecord(
-                filter,
-                asyncResult -> {
-                    if (asyncResult.succeeded() && asyncResult.result() != null) {
-                        ServiceReference serviceReference = serviceDiscovery.getReference(asyncResult.result());
-                        WebClient webClient = serviceReference.getAs(WebClient.class);
-                        sendRequest(id, promiseResult, future, webClient);
-                        serviceReference.release();
-                    }
-                }
-        );
+    private void errorResponse(RoutingContext context, Throwable error){
+        logger.error(error.getMessage());
+        HttpServerResponse response = context.response();
+        response.setStatusCode(500);
+        response.end();
     }
 
-    private void sendRequest(String id, Promise<JsonObject> promiseResult, Promise<Object> future, WebClient webClient) {
-        HttpRequest<Buffer> request = webClient.get("/user");
-        request.addQueryParam("id", id);
-        request.send(
-                asyncResult -> {
-                    if (asyncResult.succeeded()) {
-                        try {
-                            JsonObject jsonResult = asyncResult.result().body().toJsonObject();
-                            promiseResult.complete(jsonResult);
-                            future.complete();
-                        } catch (Exception e) {
-                            promiseResult.fail(e);
-                            future.complete();
-                        }
-                    } else {
-                        promiseResult.fail(asyncResult.cause());
-                        future.fail(asyncResult.cause());
-                    }
-                });
-    }
 }

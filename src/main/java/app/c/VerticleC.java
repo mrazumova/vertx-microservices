@@ -2,7 +2,7 @@ package app.c;
 
 import app.NoSuchUserException;
 import app.UserStorage;
-import io.vertx.core.Future;
+import io.reactivex.Completable;
 import io.vertx.core.json.JsonObject;
 import io.vertx.reactivex.core.AbstractVerticle;
 import io.vertx.reactivex.core.http.HttpServer;
@@ -22,7 +22,7 @@ public class VerticleC extends AbstractVerticle {
     private ServiceDiscovery serviceDiscovery;
 
     @Override
-    public void start(Future<Void> startFuture) throws Exception {
+    public Completable rxStart() {
         Router router = Router.router(vertx);
         router.get("/user").handler(this::handle);
         router.get().handler(context -> context.put("id", "value").reroute("/user"));
@@ -33,10 +33,12 @@ public class VerticleC extends AbstractVerticle {
         runServiceDiscovery(port, host);
         HttpServer httpServer = vertx.createHttpServer();
         httpServer.requestHandler(router);
-        httpServer.rxListen(port, host).subscribe();
 
         logger.info("Listening on " + host + " " + port);
+
+        return httpServer.rxListen(port, host).ignoreElement();
     }
+
 
     private void runServiceDiscovery(int port, String host) {
         serviceDiscovery = ServiceDiscovery.create(vertx);
@@ -60,7 +62,7 @@ public class VerticleC extends AbstractVerticle {
             logger.info("Parameter: " + id + " Response: " + object.toString());
         } catch (NoSuchUserException e) {
             logger.info(e.getMessage());
-            response.end(e.getMessage());
+            response.end(new JsonObject().encode());
         }
     }
 }
