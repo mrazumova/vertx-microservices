@@ -86,8 +86,6 @@
             <artifactId>vertx-rx-java2</artifactId>
             <version>3.9.4</version>
         </dependency>
-
     </dependencies>
 
-    
 </project>
