@@ -57,11 +57,11 @@ public class VerticleA extends AbstractVerticle {
     private void handle(RoutingContext context) {
         String id = context.request().getParam("id");
 
-        Single<Record> serviceB = getServiceReference(new JsonObject().put("name", "b")).subscribeOn(Schedulers.computation());
-        Single<Record> serviceC = getServiceReference(new JsonObject().put("name", "c")).subscribeOn(Schedulers.computation());
+        Single<Record> serviceB = getServiceReference(new JsonObject().put("name", "b")).subscribeOn(Schedulers.io());
+        Single<Record> serviceC = getServiceReference(new JsonObject().put("name", "c")).subscribeOn(Schedulers.io());
 
-        Single<JsonObject> resultFromB = sendRequestToService(id, serviceB.blockingGet()).subscribeOn(Schedulers.computation());
-        Single<JsonObject> resultFromC = sendRequestToService(id, serviceC.blockingGet()).subscribeOn(Schedulers.computation());
+        Single<JsonObject> resultFromB = sendRequestToService(id, serviceB.blockingGet()).subscribeOn(Schedulers.io());
+        Single<JsonObject> resultFromC = sendRequestToService(id, serviceC.blockingGet()).subscribeOn(Schedulers.io());
 
         Single
                 .zip(resultFromB, resultFromC, JsonObject::mergeIn)
@@ -73,7 +73,7 @@ public class VerticleA extends AbstractVerticle {
                                 JsonObject object = new JsonObject().put("error", "no user with id " + id);
                                 response.end(object.encode());
                             } else {
-                                Single<JsonObject> message = getMessageThroughEventBus(id, json).subscribeOn(Schedulers.computation());
+                                Single<JsonObject> message = getMessageThroughEventBus(id, json).subscribeOn(Schedulers.io());
                                 message.subscribe(
                                         jsonMessage -> {
                                             HttpServerResponse response = context.response();
