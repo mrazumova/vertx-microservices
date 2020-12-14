@@ -1,7 +1,5 @@
 package app.c;
 
-import app.NoSuchUserException;
-import app.UserStorage;
 import io.reactivex.Completable;
 import io.vertx.core.json.JsonObject;
 import io.vertx.reactivex.core.AbstractVerticle;
@@ -24,8 +22,7 @@ public class VerticleC extends AbstractVerticle {
     @Override
     public Completable rxStart() {
         Router router = Router.router(vertx);
-        router.get("/user").handler(this::handle);
-        router.get().handler(context -> context.put("id", "value").reroute("/user"));
+        router.get("/test").handler(this::handle);
 
         int port = config().getInteger("c.port");
         String host = config().getString("c.host");
@@ -54,15 +51,9 @@ public class VerticleC extends AbstractVerticle {
 
     private void handle(RoutingContext context) {
         logger.info("Incoming request...");
-        int id = Integer.parseInt(context.request().getParam("id"));
         HttpServerResponse response = context.response();
-        try {
-            JsonObject object = UserStorage.getCountryById(id);
-            response.end(object.encode());
-            logger.info("Parameter: " + id + " Response: " + object.toString());
-        } catch (NoSuchUserException e) {
-            logger.info(e.getMessage());
-            response.end(new JsonObject().encode());
-        }
+        JsonObject object = new JsonObject().put("service-C", "communication through HTTP");
+        response.end(object.encode());
+        logger.info("Response: " + object.toString());
     }
 }

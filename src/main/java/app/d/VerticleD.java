@@ -1,6 +1,5 @@
 package app.d;
 
-import app.UserStorage;
 import io.reactivex.Completable;
 import io.reactivex.Observable;
 import io.vertx.core.json.JsonObject;
@@ -19,14 +18,12 @@ public class VerticleD extends AbstractVerticle {
     public Completable rxStart() {
         EventBus eventBus = vertx.eventBus();
 
-        MessageConsumer<JsonObject> consumer = eventBus.consumer("/user");
+        MessageConsumer<JsonObject> consumer = eventBus.consumer("/test");
         Observable<Message<JsonObject>> observable = consumer.toObservable();
         observable.subscribe(
                 message -> {
-                    JsonObject json = message.body();
-                    logger.info("Received message : " + json);
-                    int id = Integer.parseInt(json.getString("id"));
-                    json.mergeIn(UserStorage.getAge(id));
+                    JsonObject json = new JsonObject().put("service-C", "communication through HTTP");
+                    logger.info("Received message. ");
                     message.rxReplyAndRequest(json).subscribe();
                     logger.info("Reply : " + json);
                 });
