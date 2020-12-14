@@ -22,11 +22,12 @@ public class VerticleD extends AbstractVerticle {
         Observable<Message<JsonObject>> observable = consumer.toObservable();
         observable.subscribe(
                 message -> {
-                    JsonObject json = new JsonObject().put("service-C", "communication through HTTP");
+                    JsonObject json = new JsonObject().put("service-D", "communication through EventBus");
                     logger.info("Received message. ");
                     message.rxReplyAndRequest(json).subscribe();
                     logger.info("Reply : " + json);
-                });
+                },
+                error -> logger.error(error.getMessage()));
 
         consumer.completionHandler(res -> {
             if (res.succeeded()) {
